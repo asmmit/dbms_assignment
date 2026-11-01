@@ -1,0 +1,899 @@
+{% extends 'base.html' %}
+{% block title %}Route Finder | TravelDB{% endblock %}
+{% block content %}
+<div class="page-heading"><div class="eyebrow">TRAVEL DECISION SUPPORT</div><h1>Route finder</h1><p>Search any named place loaded in the CITY table. Select multiple service categories to let the route recommender favor paths that pass close to each chosen type, alongside your time/fuel priority and available traffic.</p></div>
+<div class="two-column">
+  <section class="panel">
+    <div class="panel-heading"><div><h2>Plan your journey</h2><p>Choose source, destination and cost assumptions.</p></div><span class="panel-icon">↗</span></div>
+    <form method="post" class="form-grid">
+      <label class="full">Source city
+        <select name="source_city" required>
+          <option value="">Select source</option>
+          {% for city in cities %}<option value="{{ city.CityID }}" {% if source_id == city.CityID %}selected{% endif %}>{{ city.CityName }} · {{ city.StateName }}</option>{% endfor %}
+        </select>
+      </label>
+      <label class="full">Destination city
+        <select name="destination_city" required>
+          <option value="">Select destination</option>
+          {% for city in cities %}<option value="{{ city.CityID }}" {% if destination_id == city.CityID %}selected{% endif %}>{{ city.CityName }} · {{ city.StateName }}</option>{% endfor %}
+        </select>
+      </label>
+      <label>Vehicle mileage (km/litre)
+        <input type="number" min="0.1" step="0.1" name="mileage" value="{{ mileage_value }}" required>
+      </label>
+      <label>Fuel price (₹/litre)
+        <input type="number" min="0" step="0.01" name="fuel_price" value="{{ fuel_price_value }}" required>
+      </label>
+      <label class="full">Decision priority
+        <select name="preference">
+          <option value="balanced" {% if preference == 'balanced' %}selected{% endif %}>Balanced comparison</option>
+          <option value="time" {% if preference == 'time' %}selected{% endif %}>Travel time</option>
+          <option value="fuel" {% if preference == 'fuel' %}selected{% endif %}>Fuel cost</option>
+        </select>
+      </label>
+      <div class="full" style="border-top:1px solid #e7eaf0;padding-top:14px;margin-top:4px">
+        <strong>Services you want near the route</strong>
+        <p class="small-help" style="margin-top:4px">Select multiple categories. The recommender checks how close each candidate road path runs to the nearest matching service in every selected category.</p>
+      </div>
+      <div class="full" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(185px,1fr));gap:8px">
+        {% for key, label in service_types %}
+        <label style="display:flex;align-items:center;gap:9px;border:1px solid #dbe3ee;border-radius:9px;padding:10px;background:#fff;font-weight:600">
+          <input type="checkbox" name="service_types" value="{{ key }}" {% if key in selected_service_types %}checked{% endif %} style="width:17px;height:17px;accent-color:#2563eb">
+          {{ label }}
+        </label>
+        {% endfor %}
+      </div>
+      <label class="full">Maximum distance from route (km)
+        <input type="number" min="1" max="100" step="1" name="service_radius" value="{{ service_radius_value }}" required>
+      </label>
+      <div class="full"><button class="btn primary" type="submit">Search route <span>→</span></button></div>
+    </form>
+    <p class="small-help">Road alternatives and turn-by-turn instructions come from the public OSRM routing demo service. Service-aware ranking compares the candidate paths returned and favors routes closer to the nearest match in each selected category; it does not guarantee stops at exact service locations or a globally optimal route. Internet access is required.</p>
+  </section>
+  <section class="result-panel">
+    {% if error %}<div class="alert error"><strong>Could not calculate route</strong><p>{{ error }}</p></div>
+    {% elif result %}
+      <div class="result-top"><span class="status-pill">ROUTE FOUND</span><span class="route-id">{{ result.RouteSource }}</span></div>
+      <div class="route-cities"><div class="city-node"><span class="node-dot start"></span><div><small>FROM</small><h3 id="route-source-name">{{ result.SourceCity }}</h3></div></div><div class="route-line"></div><div class="city-node"><span class="node-dot end"></span><div><small>TO</small><h3 id="route-destination-name">{{ result.DestinationCity }}</h3></div></div></div>
+      <div class="metric-grid"><div class="metric"><span>Distance</span><strong id="route-total-distance">{{ result.TotalDistance | number(2) }} <small>km</small></strong></div><div class="metric"><span>Estimated travel time</span><strong id="route-base-eta">{{ result.EstimatedTime | number(2) }} <small>hr</small></strong></div><div class="metric highlight"><span>Estimated fuel cost</span><strong id="route-fuel-cost">₹{{ result.FuelCost | number(2) }}</strong><small>{{ result.Mileage }} km/l · ₹{{ result.FuelPrice }}/litre</small></div><div class="metric"><span>Safety score</span><strong>{% if result.SafetyScore is not none %}{{ result.SafetyScore }}{% else %}Not available{% endif %}</strong></div></div>
+      <div class="recommendation"><strong>Recommended route · Route {{ result.RouteRank }} of {{ result.RouteCount }}</strong><p id="route-recommendation-message">{{ result.Recommendation }}</p></div>
+
+      {% if route_options %}
+      <section style="margin-top:18px">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+          <div><h2 style="font-size:1.1rem;margin:0">Route comparison</h2><p class="small-help" style="margin:4px 0 0">Alternatives are returned by the road-routing engine when available, then ranked against your selected priority.</p></div>
+          <span class="route-id">{{ route_options|length }} path option(s)</span>
+        </div>
+        {% if route_notice %}<p class="small-help">{{ route_notice }}</p>{% endif %}
+        <div style="display:grid;gap:10px">
+          {% for option in route_options %}
+          <article style="border:1px solid {% if option.Recommended %}#2563eb{% else %}#dbe3ee{% endif %};border-radius:13px;padding:13px;background:{% if option.Recommended %}#eff6ff{% else %}#fff{% endif %}">
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+              <div><strong>{{ option.Title }}</strong>{% if option.Recommended %}<span class="status-pill" style="margin-left:8px">TAKE THIS ROUTE</span>{% endif %}</div>
+              <strong>{{ option.RankScore|number(1) }}/100</strong>
+            </div>
+            <div class="metric-grid" style="margin-top:10px">
+              <div class="metric"><span>Distance</span><strong>{{ option.TotalDistance|number(2) }} <small>km</small></strong></div>
+              <div class="metric"><span>Base ETA</span><strong>{{ option.EstimatedTime|number(2) }} <small>hr</small></strong></div>
+              <div class="metric"><span>Estimated fuel</span><strong>₹{{ option.FuelCost|number(0) }}</strong></div>
+              <div class="metric"><span>Traffic</span><strong style="font-size:1rem">{{ option.TrafficLabel }}</strong>{% if option.AdjustedETAHours is not none %}<small>Adjusted {{ option.AdjustedETAHours|number(2) }} hr</small>{% endif %}</div>
+            </div>
+            <p class="small-help" style="margin-top:8px">{{ option.RankingBasis }}</p>
+            {% if selected_service_types and option.ServiceProximity %}
+            <div style="margin-top:9px;padding:10px;border-radius:10px;background:#f8fafc;border:1px solid #e2e8f0">
+              <div style="font-weight:700;font-size:.88rem;margin-bottom:6px">Selected-service proximity · {{ option.ServiceScore|number(1) }}/100</div>
+              <div style="display:grid;gap:5px">
+              {% for service in option.ServiceProximity %}
+                <div style="font-size:.84rem;display:flex;justify-content:space-between;gap:10px;align-items:start">
+                  <span>{{ service.Label }}{% if service.FoundWithinRadius and service.Name %} · {{ service.Name }}{% endif %}</span>
+                  <strong style="white-space:nowrap">{% if service.DistanceKm is not none %}{{ service.DistanceKm|number(2) }} km{% else %}Not found{% endif %}</strong>
+                </div>
+                {% if not service.FoundWithinRadius %}<div class="small-help" style="margin-top:-4px">No matching location in the selected {{ service_radius_value }} km route corridor.</div>{% endif %}
+              {% endfor %}
+              </div>
+            </div>
+            {% endif %}
+            {% if option.Directions %}
+            <details {% if option.Recommended %}open{% endif %} style="margin-top:9px">
+              <summary style="cursor:pointer;font-weight:700;color:#1d4ed8">{% if option.Recommended %}Recommended route: full turn-by-turn path{% else %}View full path for this alternative{% endif %} ({{ option.Directions|length }} steps)</summary>
+              <ol class="visual-direction-list" data-route-rank="{{ option.RouteRank }}" style="padding-left:22px;margin:12px 0 0;display:grid;gap:9px">
+                {% for step in option.Directions %}
+                <li style="padding-left:3px">
+                  <div style="font-weight:600">{{ step.Instruction }}</div>
+                  <div class="small-help">{{ step.DistanceKm|number(2) }} km · {{ step.DurationMinutes|number(1) }} min{% if step.RoadName %} · {{ step.RoadName }}{% endif %}</div>
+                  {% if step.Lat is not none and step.Lon is not none %}
+                  <button type="button" class="route-step-jump" data-step-number="{{ step.StepNumber }}" data-lat="{{ step.Lat }}" data-lon="{{ step.Lon }}" data-route-rank="{{ option.RouteRank }}" style="margin-top:5px;border:1px solid #cbd5e1;background:#fff;border-radius:7px;padding:4px 8px;color:#1d4ed8;cursor:pointer;font-size:.78rem;font-weight:700">⌖ Show this step on map</button>
+                  {% endif %}
+                </li>
+                {% endfor %}
+              </ol>
+            </details>
+            {% else %}
+              <p class="small-help" style="margin-top:8px">Step-by-step path instructions are unavailable for this fallback record.</p>
+            {% endif %}
+          </article>
+          {% endfor %}
+        </div>
+      </section>
+      {% endif %}
+
+      <section style="margin-top:18px;border:1px solid #dbe5f0;border-radius:14px;padding:16px;background:linear-gradient(135deg,#f8fbff,#ffffff)">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+          <div><div class="eyebrow">RULE-BASED ROUTE COMPARISON</div><h2 style="font-size:1.15rem;margin:4px 0 0">Traffic & route comparison</h2></div>
+          {% if traffic_summary %}<span class="status-pill">LIVE TRAFFIC SAMPLED</span>{% else %}<span class="route-id">Traffic not connected</span>{% endif %}
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(135px,1fr));gap:9px;margin:12px 0">
+          <div class="metric"><span>Route suitability score</span><strong>{{ route_score if route_score is not none else '—' }} <small>/100</small></strong><small>{{ route_score_label or '' }}</small></div>
+          {% if traffic_summary %}
+            <div class="metric"><span>Traffic condition</span><strong style="font-size:1.0rem">{{ traffic_summary.level }}</strong><small>{{ traffic_summary.sample_count }} route points</small></div>
+            <div class="metric"><span>Current / free-flow speed</span><strong>{{ traffic_summary.current_speed|number(1) }} <small>/ {{ traffic_summary.free_flow_speed|number(1) }} km/h</small></strong></div>
+            <div class="metric"><span>Approx. traffic-adjusted ETA</span><strong>{{ traffic_summary.adjusted_eta_hours|number(2) }} <small>hr</small></strong><small>+{{ traffic_summary.extra_minutes|number(0) }} min vs baseline</small></div>
+          {% else %}
+            <div class="metric"><span>Live traffic</span><strong style="font-size:1rem">Not available</strong><small>Baseline ETA remains unchanged</small></div>
+          {% endif %}
+        </div>
+        {% if traffic_summary %}
+          <p class="small-help">Observed congestion index: {{ traffic_summary.congestion_pct|number(1) }}% · estimated delay vs free-flow: {{ traffic_summary.delay_pct|number(1) }}% · provider confidence: {{ traffic_summary.confidence_pct|number(0) }}%.</p>
+          <p class="small-help">Sampled at {{ traffic_summary.observed_at }}. The provider is queried at up to three points along the route, so adjusted ETA is approximate, not a full-road traffic simulation.</p>
+          {% if traffic_summary.road_closure %}<div class="alert error"><strong>Potential road closure</strong><p>A closure flag was reported at one sampled road point. Verify conditions before travelling.</p></div>{% endif %}
+          {% if traffic_summary.partial_warning %}<p class="small-help">{{ traffic_summary.partial_warning }}</p>{% endif %}
+        {% elif traffic_message %}
+          <p class="small-help">{{ traffic_message }}</p>
+          {% if not tomtom_configured %}<p class="small-help">To enable live traffic, create a TomTom developer API key and add <code>TOMTOM_API_KEY=your_key</code> to your local <code>.env</code> file, then restart Flask.</p>{% endif %}
+        {% endif %}
+        <div style="margin-top:12px"><strong>Decision factors</strong><div style="display:grid;gap:8px;margin-top:8px">
+          {% for factor in route_score_factors %}
+          <div><div style="display:flex;justify-content:space-between;gap:8px;font-size:.86rem"><span>{{ factor.name }}</span><strong>{{ factor.score|number(1) }}/100</strong></div><div style="height:7px;background:#e8edf5;border-radius:99px;overflow:hidden"><div style="width:{{ factor.score }}%;height:100%;background:#2563eb;border-radius:99px"></div></div></div>
+          {% endfor %}
+        </div></div>
+        <p class="small-help" style="margin-top:11px"><strong>Scoring method:</strong> transparent, preference-weighted decision scoring using estimated time, distance, fuel cost and (when configured) observed traffic flow. This is a deterministic formula-based comparison method; no AI or machine-learning model is used.</p>
+        {% if score_explanation %}<p class="small-help">{{ score_explanation }}</p>{% endif %}
+      </section>
+
+      {% if map_points %}
+      <section style="margin-top:18px">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px"><h2 style="font-size:1.1rem;margin:0">Route map</h2><span class="route-id">OpenStreetMap</span></div>
+        <div id="route-map" role="img" aria-label="Map showing the recommended route, alternatives and numbered turn markers" style="height:430px;width:100%;border-radius:14px;overflow:hidden;border:1px solid #dce2ec;background:#f1f5f9"></div>
+        <div class="visual-map-legend" style="display:flex;flex-wrap:wrap;gap:12px;margin-top:9px;font-size:.82rem;color:#475569">
+          <span><span style="display:inline-block;width:22px;height:4px;background:#2563eb;vertical-align:middle;margin-right:5px;border-radius:3px"></span>Recommended path</span>
+          <span><span style="display:inline-block;width:22px;height:4px;background:#64748b;vertical-align:middle;margin-right:5px;border-radius:3px;border-top:1px dashed #fff"></span>Alternative paths</span>
+          <span><span style="display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;background:#fff;border:2px solid #2563eb;color:#1d4ed8;font-weight:800;margin-right:4px">↰</span>Turn / maneuver marker</span>
+          <span><span style="display:inline-flex;align-items:center;justify-content:center;min-width:26px;height:20px;padding:0 3px;border-radius:12px;background:#dcfce7;border:2px solid #15803d;color:#166534;font-size:10px;font-weight:900;margin-right:4px">H1</span>Hospital · <b>EV1</b> charging · <b>R1</b> restaurant · <b>P1</b> petrol · <b>HT1</b> hotel</span>
+        </div>
+        <p class="small-help" style="margin-top:7px">Numbered maneuver markers are placed at turns supplied by the routing engine. Click a marker for the instruction, or choose “Show this step on map” in the directions list. Map tiles and routing geometry require internet access.</p>
+        {% if map_notice %}<p class="small-help">{{ map_notice }}</p>{% endif %}
+
+        <div id="live-navigation-panel" class="live-navigation-panel" aria-label="Optional live navigation">
+          <div class="live-nav-heading">
+            <div>
+              <div class="eyebrow">OPTIONAL · DEVICE LOCATION</div>
+              <h3>Live navigation</h3>
+            </div>
+            <span id="nav-state-badge" class="live-nav-badge">Not started</span>
+          </div>
+          <p class="small-help live-nav-intro">Start only when you are ready to travel. Your browser will ask for location permission. TravelDB will show your current position, announce upcoming turns when voice guidance is enabled, and request a new path after repeated off-route readings.</p>
+          <div class="live-nav-controls">
+            <button id="start-navigation" type="button" class="btn primary">▶ Start navigation</button>
+            <button id="stop-navigation" type="button" class="btn secondary" disabled>■ Stop</button>
+            <label class="live-nav-voice"><input id="voice-guidance-toggle" type="checkbox" checked> Voice guidance</label>
+          </div>
+          <div id="nav-status" class="live-nav-status" role="status" aria-live="polite">Navigation is off. Select Start navigation to share your current location with this page.</div>
+          <div id="nav-next-turn" class="live-nav-next-turn" hidden>
+            <div class="live-nav-next-layout">
+              <div id="nav-turn-symbol" class="live-nav-symbol">↑</div>
+              <div class="live-nav-next-copy">
+                <div id="nav-distance-to-turn" class="live-nav-distance">NEXT INSTRUCTION</div>
+                <strong id="nav-next-instruction">Calculating…</strong>
+              </div>
+            </div>
+            <div id="nav-remaining-summary" class="live-nav-remaining"></div>
+          </div>
+          <details id="nav-live-directions" class="live-nav-directions" hidden>
+            <summary>Live navigation instruction list</summary>
+            <ol id="nav-live-step-list"></ol>
+          </details>
+          <div id="reroute-data-warning" class="live-nav-warning" hidden>Route recalculated from your current location. Traffic samples, the route score and nearby-service proximity still refer to the original search and have not been recalculated. Stop navigation and search again for a fresh recommendation.</div>
+          <p class="small-help live-nav-footnote">Location is accessed only after you press Start navigation and grant permission. The browser displays your GPS position; coordinates are sent to the public OSRM routing service only when an off-route recalculation is requested. This prototype does not store GPS history in MySQL. GPS accuracy, internet and API availability vary. Do not operate the screen while driving.</p>
+        </div>
+      </section>
+      <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+      <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+      <script>
+        (function () {
+          const points = {{ map_points | tojson }};
+          const routes = {{ map_routes | tojson }};
+          const servicePins = {{ map_services | tojson }};
+          const mapElement = document.getElementById('route-map');
+          if (!mapElement) return;
+          if (typeof L === 'undefined') {
+            mapElement.innerHTML = '<div style="padding:18px">Map library could not be loaded. Check the internet connection; route details are still available above.</div>';
+            return;
+          }
+          const map = L.map(mapElement, { scrollWheelZoom: false });
+          L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 18,
+            attribution: '&copy; OpenStreetMap contributors'
+          }).addTo(map);
+          const sourceMarker = L.marker([points.source.lat, points.source.lon]).addTo(map).bindPopup('Source: ' + points.source.name);
+          L.marker([points.destination.lat, points.destination.lon]).addTo(map).bindPopup('Destination: ' + points.destination.name);
+          const bounds = L.latLngBounds([[points.source.lat, points.source.lon], [points.destination.lat, points.destination.lon]]);
+          const routeLayers = {};
+          const maneuverLayer = L.layerGroup().addTo(map);
+          const serviceMarkerById = Object.create(null);
+          let focusedStepMarker = null;
+          let activeServiceHalo = null;
+          let activeServiceMarker = null;
+          let activeServiceRow = null;
+          const recommended = routes.find(function (route) { return Boolean(route.Recommended); });
+
+          // Draw alternatives first, then draw the recommended path on top.
+          routes.slice().sort((a, b) => Number(a.Recommended) - Number(b.Recommended)).forEach(function (route) {
+            if (!route.geometry || !route.geometry.coordinates || route.geometry.coordinates.length < 2) return;
+            const color = route.Recommended ? '#2563eb' : '#64748b';
+            const line = L.geoJSON({type: 'Feature', properties: {}, geometry: route.geometry}, {
+              style: {color: color, weight: route.Recommended ? 6 : 4, opacity: route.Recommended ? 0.98 : 0.52, dashArray: route.Recommended ? null : '7 6'}
+            }).addTo(map);
+            line.bindPopup((route.Recommended ? 'Recommended:  ' : '') + route.Title + ' · score ' + route.RankScore + '/100');
+            routeLayers[String(route.RouteRank)] = line;
+            bounds.extend(line.getBounds());
+          });
+
+          function safeText(value) {
+            return String(value == null ? '' : value).replace(/[&<>"']/g, function (ch) {
+              return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch];
+            });
+          }
+          const serviceMarkerCounts = Object.create(null);
+          const servicePrefixes = {hospital: 'H', ev_station: 'EV', restaurant: 'R', petrol_pump: 'P', hotel: 'HT'};
+          servicePins.forEach(function (service) {
+            if (!Number.isFinite(Number(service.lat)) || !Number.isFinite(Number(service.lon))) return;
+            const serviceId = String(service.id == null ? '' : service.id);
+            const category = String(service.location_type || 'service');
+            serviceMarkerCounts[category] = (serviceMarkerCounts[category] || 0) + 1;
+            const markerLabel = String(service.marker_code || ((servicePrefixes[category] || 'S') + serviceMarkerCounts[category]));
+            const markerHtml = '<div title="' + safeText(markerLabel) + '" style="min-width:31px;height:29px;padding:0 4px;border-radius:16px;display:flex;align-items:center;justify-content:center;background:#dcfce7;border:2px solid #15803d;color:#166534;box-shadow:0 2px 6px #0f172a33;font-size:10px;font-weight:900;white-space:nowrap">' + safeText(markerLabel) + '</div>';
+            const marker = L.marker([Number(service.lat), Number(service.lon)], {
+              icon: L.divIcon({className: 'tdb-service-marker-wrap', html: markerHtml, iconSize:[39,33], iconAnchor:[19,16]})
+            }).addTo(map);
+            const distanceText = service.distance_km == null ? '' : Number(service.distance_km).toFixed(2) + ' km from the route';
+            marker.bindPopup('<strong>' + safeText(markerLabel) + ' · ' + safeText(service.label || 'Selected service') + '</strong><br>' + safeText(service.name || 'Unnamed service') +
+              (distanceText ? '<br><small>' + safeText(distanceText) + '</small>' : '') +
+              (service.brand ? '<br><small>' + safeText(service.brand) + '</small>' : '') +
+              (service.operator ? '<br><small>' + safeText(service.operator) + '</small>' : '') +
+              (service.address ? '<br><small>' + safeText(service.address) + '</small>' : ''));
+            if (serviceId) serviceMarkerById[serviceId] = marker;
+            marker.on('click', function () {
+              if (serviceId) selectServiceRow(serviceId);
+              focusService(serviceId, Number(service.lat), Number(service.lon));
+            });
+          });
+
+          function arrowFor(step) {
+            const type = String(step.ManeuverType || '').toLowerCase();
+            const mod = String(step.Modifier || '').toLowerCase();
+            if (type.indexOf('roundabout') >= 0 || type === 'rotary') return '↻';
+            if (mod.indexOf('uturn') >= 0) return '↶';
+            if (mod.indexOf('sharp left') >= 0) return '↰';
+            if (mod.indexOf('sharp right') >= 0) return '↱';
+            if (mod.indexOf('slight left') >= 0) return '↖';
+            if (mod.indexOf('slight right') >= 0) return '↗';
+            if (mod.indexOf('left') >= 0) return '←';
+            if (mod.indexOf('right') >= 0) return '→';
+            return '↑';
+          }
+          function isVisualManeuver(step) {
+            const type = String(step.ManeuverType || '').toLowerCase();
+            const mod = String(step.Modifier || '').toLowerCase();
+            if (step.Lat == null || step.Lon == null || !Number.isFinite(Number(step.Lat)) || !Number.isFinite(Number(step.Lon))) return false;
+            if (type === 'depart' || type === 'arrive') return false;
+            if (['turn', 'fork', 'merge', 'on ramp', 'off ramp', 'end of road', 'roundabout', 'rotary', 'roundabout turn', 'exit roundabout'].indexOf(type) >= 0) return true;
+            return mod && mod !== 'straight' && (mod.indexOf('left') >= 0 || mod.indexOf('right') >= 0 || mod === 'uturn');
+          }
+          function highlightRoute(routeRank) {
+            const wanted = String(routeRank || (recommended && recommended.RouteRank) || '');
+            Object.keys(routeLayers).forEach(function (rank) {
+              const isSelected = rank === wanted;
+              routeLayers[rank].setStyle({
+                color: isSelected ? '#2563eb' : '#64748b',
+                weight: isSelected ? 6 : 4,
+                opacity: isSelected ? 0.98 : 0.52,
+                dashArray: isSelected ? null : '7 6'
+              });
+              if (isSelected) routeLayers[rank].bringToFront();
+            });
+            return routes.find(function (route) { return String(route.RouteRank) === wanted; }) || recommended;
+          }
+
+          function renderManeuvers(route) {
+            maneuverLayer.clearLayers();
+            if (!route || !Array.isArray(route.Directions)) return;
+            route.Directions.filter(isVisualManeuver).forEach(function (step) {
+              const markerHtml = '<div style="position:relative;width:31px;height:31px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:#fff;border:2px solid #1d4ed8;color:#1d4ed8;box-shadow:0 2px 6px #0f172a33;font-size:20px;font-weight:900">' + arrowFor(step) + '<span style="position:absolute;right:-7px;top:-7px;min-width:16px;height:16px;padding:0 2px;border-radius:8px;background:#1d4ed8;border:1px solid white;color:white;font-size:10px;line-height:14px;text-align:center">' + safeText(step.StepNumber) + '</span></div>';
+              const marker = L.marker([Number(step.Lat), Number(step.Lon)], {
+                icon: L.divIcon({className: 'tdb-turn-marker-wrap', html: markerHtml, iconSize:[35,35], iconAnchor:[17,17]})
+              }).addTo(maneuverLayer);
+              const distanceText = Number(step.DistanceKm || 0).toFixed(2) + ' km · ' + Number(step.DurationMinutes || 0).toFixed(1) + ' min';
+              marker.bindPopup('<strong>Step ' + safeText(step.StepNumber) + '</strong><br>' + safeText(step.Instruction) + '<br><small>' + safeText(distanceText) + '</small>');
+            });
+          }
+
+          function focusStep(lat, lon, stepNumber, instruction, distanceText, routeRank) {
+            if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
+            const target = L.latLng(lat, lon);
+            const selectedRoute = highlightRoute(routeRank);
+            renderManeuvers(selectedRoute);
+
+            // Route-step clicks should behave like service clicks: return the user to the map,
+            // let smooth scrolling finish, then resize/reposition Leaflet at the exact maneuver.
+            // Calling flyTo before the page scroll completes can update the map off-screen and
+            // leave the visible map looking as though it never moved.
+            let applied = false;
+            let fallbackTimer = null;
+            function applyStepFocus() {
+              if (applied) return;
+              applied = true;
+              if (fallbackTimer) window.clearTimeout(fallbackTimer);
+              window.removeEventListener('scrollend', onScrollEnd);
+              map.stop();
+              map.invalidateSize({pan: false});
+              map.setView(target, Math.max(map.getZoom(), 15), {animate: false});
+              requestAnimationFrame(function () {
+                map.invalidateSize({pan: false});
+                map.setView(target, Math.max(map.getZoom(), 15), {animate: false});
+                if (focusedStepMarker) map.removeLayer(focusedStepMarker);
+                focusedStepMarker = L.marker(target, {
+                  icon: L.divIcon({className: 'tdb-focused-step-wrap', html: '<div style="width:36px;height:36px;border-radius:50%;background:#facc15;border:3px solid #1d4ed8;box-shadow:0 2px 8px #0f172a55;display:flex;align-items:center;justify-content:center;font-weight:900;color:#0f172a">' + safeText(stepNumber) + '</div>', iconSize:[36,36], iconAnchor:[18,18]})
+                }).addTo(map);
+                focusedStepMarker.bindPopup('<strong>Step ' + safeText(stepNumber) + '</strong><br>' + safeText(instruction) + (distanceText ? '<br><small>' + safeText(distanceText) + '</small>' : '')).openPopup();
+              });
+            }
+            function onScrollEnd() { applyStepFocus(); }
+            mapElement.scrollIntoView({behavior: 'smooth', block: 'center'});
+            window.addEventListener('scrollend', onScrollEnd, {once: true});
+            // Fallback for browsers that don't emit scrollend, or if the page is already aligned.
+            fallbackTimer = window.setTimeout(applyStepFocus, 1200);
+          }
+
+          function selectServiceRow(serviceId) {
+            if (activeServiceRow) activeServiceRow.classList.remove('is-selected');
+            const row = document.getElementById('route-service-row-' + String(serviceId));
+            if (row) {
+              // If a map marker is clicked, open its collapsible category so the matching name is visible.
+              let details = row.closest('details');
+              while (details) {
+                details.open = true;
+                details = details.parentElement ? details.parentElement.closest('details') : null;
+              }
+              row.classList.add('is-selected');
+              activeServiceRow = row;
+            } else {
+              activeServiceRow = null;
+            }
+          }
+
+          function highlightServiceMarker(serviceId, lat, lon, flyTo) {
+            if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
+            const target = L.latLng(lat, lon);
+            if (activeServiceHalo) map.removeLayer(activeServiceHalo);
+            activeServiceHalo = L.circleMarker(target, {
+              radius: 27, color: '#f59e0b', weight: 5, opacity: 1,
+              fillColor: '#fde68a', fillOpacity: 0.34, interactive: false
+            }).addTo(map);
+            const marker = serviceMarkerById[String(serviceId)];
+            if (activeServiceMarker && activeServiceMarker !== marker) activeServiceMarker.setZIndexOffset(0);
+            if (marker) {
+              activeServiceMarker = marker;
+              marker.setZIndexOffset(2000);
+              if (flyTo) {
+                map.stop();
+                // setView is deliberate: it reliably recentres and zooms even after a long smooth page scroll.
+                map.setView(target, 17, {animate: false});
+              }
+              marker.openPopup();
+              if (activeServiceHalo.bringToFront) activeServiceHalo.bringToFront();
+            } else if (flyTo) {
+              map.stop();
+              map.setView(target, 17, {animate: false});
+            }
+          }
+
+          function focusService(serviceId, lat, lon) {
+            const serviceKey = String(serviceId || '');
+            if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
+            selectServiceRow(serviceKey);
+            const marker = serviceMarkerById[serviceKey];
+            const target = L.latLng(lat, lon);
+            let applied = false;
+            let fallbackTimer = null;
+            function applyServiceFocus() {
+              if (applied) return;
+              applied = true;
+              if (fallbackTimer) window.clearTimeout(fallbackTimer);
+              window.removeEventListener('scrollend', onScrollEnd);
+              // Leaflet can miss setView when its container is being scrolled/resized; invalidate
+              // the map after scrolling, then set the view on the next animation frame as well.
+              map.stop();
+              map.invalidateSize({pan: false});
+              map.setView(target, 17, {animate: false});
+              requestAnimationFrame(function () {
+                map.invalidateSize({pan: false});
+                map.setView(target, 17, {animate: false});
+                highlightServiceMarker(serviceKey, lat, lon, false);
+                if (marker) {
+                  marker.setZIndexOffset(3000);
+                  marker.openPopup();
+                }
+              });
+            }
+            function onScrollEnd() { applyServiceFocus(); }
+            mapElement.scrollIntoView({behavior: 'smooth', block: 'center'});
+            // Use native scrollend where available and a generous fallback for browsers that don't fire it.
+            window.addEventListener('scrollend', onScrollEnd, {once: true});
+            fallbackTimer = window.setTimeout(applyServiceFocus, 900);
+          }
+
+          // Use delegated click handling because this script appears BEFORE the nearby-service
+          // list in the template. Direct querySelectorAll at this point runs too early and finds
+          // zero service links; delegation catches service links when they are later rendered.
+          document.addEventListener('click', function (event) {
+            const target = event.target;
+            const link = target && target.closest ? target.closest('.route-service-jump') : null;
+            if (!link) return;
+            event.preventDefault();
+            event.stopPropagation();
+            const serviceId = link.getAttribute('data-service-id');
+            const lat = Number(link.getAttribute('data-lat'));
+            const lon = Number(link.getAttribute('data-lon'));
+            focusService(serviceId, lat, lon);
+          });
+
+          // Draw directional turn symbols for the recommended path first.
+          renderManeuvers(recommended);
+
+          // Delegated handling also supports route-step buttons rebuilt after an automatic reroute.
+          document.addEventListener('click', function (event) {
+            const button = event.target && event.target.closest ? event.target.closest('.route-step-jump') : null;
+            if (!button) return;
+            event.preventDefault();
+            const lat = Number(button.dataset.lat);
+            const lon = Number(button.dataset.lon);
+            const stepNum = button.dataset.stepNumber;
+            const routeRank = button.dataset.routeRank;
+            const row = button.closest('li');
+            const instruction = row ? (row.querySelector('.route-step-instruction') || row.querySelector('div') || {}).textContent : '';
+            const details = row ? (row.querySelector('.small-help') || {}).textContent : '';
+            focusStep(lat, lon, stepNum, instruction, details, routeRank);
+          });
+
+          // Optional browser-GPS navigation layer: location tracking, voice prompts and off-route recalculation.
+          // This only starts after the user clicks Start and grants location permission.
+          const startNavButton = document.getElementById('start-navigation');
+          const stopNavButton = document.getElementById('stop-navigation');
+          const voiceToggle = document.getElementById('voice-guidance-toggle');
+          const navStatus = document.getElementById('nav-status');
+          const navBadge = document.getElementById('nav-state-badge');
+          const nextTurnPanel = document.getElementById('nav-next-turn');
+          const navTurnSymbol = document.getElementById('nav-turn-symbol');
+          const navDistance = document.getElementById('nav-distance-to-turn');
+          const navInstruction = document.getElementById('nav-next-instruction');
+          const navRemaining = document.getElementById('nav-remaining-summary');
+          const navDirectionsDetails = document.getElementById('nav-live-directions');
+          const navStepList = document.getElementById('nav-live-step-list');
+          const navigationMileage = Number({{ result.Mileage | tojson }});
+          const navigationFuelPrice = Number({{ result.FuelPrice | tojson }});
+          let geolocationWatchId = null;
+          let liveUserMarker = null;
+          let liveAccuracyCircle = null;
+          let navigationActive = false;
+          let rerouteInProgress = false;
+          let offRouteFixCount = 0;
+          let lastRerouteAt = 0;
+          let routeMetrics = null;
+          let spokenSteps = new Set();
+          let latestGps = null;
+          let navPositionProgress = 0;
+
+          function setNavigationStatus(message, state) {
+            navStatus.textContent = message;
+            navBadge.textContent = state || (navigationActive ? 'Navigating' : 'Not started');
+          }
+          function toRadians(n) { return n * Math.PI / 180; }
+          function haversineMeters(aLat, aLon, bLat, bLon) {
+            const R = 6371000;
+            const dLat = toRadians(bLat - aLat);
+            const dLon = toRadians(bLon - aLon);
+            const x = Math.sin(dLat / 2) ** 2 + Math.cos(toRadians(aLat)) * Math.cos(toRadians(bLat)) * Math.sin(dLon / 2) ** 2;
+            return 2 * R * Math.asin(Math.min(1, Math.sqrt(x)));
+          }
+          function buildRouteMetrics(geometry) {
+            const coords = geometry && geometry.coordinates;
+            if (!Array.isArray(coords) || coords.length < 2) return null;
+            const cumulative = [0];
+            for (let i = 1; i < coords.length; i++) {
+              cumulative.push(cumulative[i - 1] + haversineMeters(coords[i - 1][1], coords[i - 1][0], coords[i][1], coords[i][0]));
+            }
+            return {coords: coords, cumulative: cumulative, totalMeters: cumulative[cumulative.length - 1]};
+          }
+          function nearestPointOnRoute(lat, lon, metrics) {
+            let bestIndex = 0;
+            let bestDistance = Infinity;
+            for (let i = 0; i < metrics.coords.length; i++) {
+              const coord = metrics.coords[i];
+              const d = haversineMeters(lat, lon, coord[1], coord[0]);
+              if (d < bestDistance) { bestDistance = d; bestIndex = i; }
+            }
+            return {index: bestIndex, distanceM: bestDistance, progressM: metrics.cumulative[bestIndex]};
+          }
+          function arrowForLiveStep(step) {
+            const type = String(step.ManeuverType || '').toLowerCase();
+            const mod = String(step.Modifier || '').toLowerCase();
+            if (type.indexOf('roundabout') >= 0 || type === 'rotary' || type === 'exit roundabout') return '↻';
+            if (mod.indexOf('uturn') >= 0) return '↶';
+            if (mod.indexOf('sharp left') >= 0) return '↰';
+            if (mod.indexOf('sharp right') >= 0) return '↱';
+            if (mod.indexOf('slight left') >= 0) return '↖';
+            if (mod.indexOf('slight right') >= 0) return '↗';
+            if (mod.indexOf('left') >= 0) return '←';
+            if (mod.indexOf('right') >= 0) return '→';
+            return '↑';
+          }
+          function estimateStepProgress(step, metrics) {
+            if (step.Lat == null || step.Lon == null) return 0;
+            return metrics.cumulative[nearestPointOnRoute(Number(step.Lat), Number(step.Lon), metrics).index];
+          }
+          function prepareDirectionsForNavigation(route) {
+            if (!route || !Array.isArray(route.Directions) || !routeMetrics) return;
+            route.Directions.forEach(function (step) { step._progressM = estimateStepProgress(step, routeMetrics); });
+          }
+          function formatMeters(meters) {
+            if (!Number.isFinite(meters) || meters < 0) return '—';
+            return meters >= 1000 ? (meters / 1000).toFixed(1) + ' km' : Math.round(meters) + ' m';
+          }
+          function formatJsInstruction(step) {
+            const man = step.maneuver || {};
+            const kind = String(man.type || 'continue').toLowerCase();
+            const mod = String(man.modifier || '').toLowerCase();
+            const road = String(step.name || step.ref || step.destinations || '').trim();
+            const dir = ({left:'left',right:'right','slight left':'slightly left','slight right':'slightly right','sharp left':'sharply left','sharp right':'sharply right',uturn:'around',straight:'straight'});
+            let text = 'Continue as indicated';
+            if (kind === 'depart') text = road ? 'Start on ' + road : 'Start driving';
+            else if (kind === 'arrive') text = 'Arrive at your destination';
+            else if (kind === 'turn') text = mod === 'uturn' ? 'Make a U-turn' : mod === 'straight' ? 'Continue straight' : 'Turn ' + (dir[mod] || mod || 'as indicated');
+            else if (kind === 'fork') text = 'Keep ' + (dir[mod] || mod || 'straight');
+            else if (kind === 'merge') text = mod ? 'Merge ' + (dir[mod] || mod) : 'Merge';
+            else if (kind === 'on ramp') text = 'Take the entrance ramp';
+            else if (kind === 'off ramp') text = 'Take the exit ramp';
+            else if (kind === 'end of road') text = mod ? 'At the end of the road, turn ' + (dir[mod] || mod) : 'At the end of the road';
+            else if (kind === 'roundabout' || kind === 'rotary' || kind === 'roundabout turn') text = man.exit ? 'Enter the roundabout and take exit ' + man.exit : 'Enter the roundabout and follow signs';
+            else if (kind === 'exit roundabout') text = 'Exit the roundabout';
+            else if (mod && mod !== 'straight') text = 'Continue ' + (dir[mod] || mod);
+            else text = 'Continue straight';
+            if (road && kind !== 'depart' && kind !== 'arrive' && text.toLowerCase().indexOf(road.toLowerCase()) < 0) text += ' onto ' + road;
+            const loc = man.location || [];
+            return {Instruction:text, RoadName:road, DistanceKm:Number(step.distance || 0)/1000, DurationMinutes:Number(step.duration || 0)/60,
+              Lat:loc.length > 1 ? Number(loc[1]) : null, Lon:loc.length > 1 ? Number(loc[0]) : null,
+              ManeuverType:kind, Modifier:mod, StepNumber:0};
+          }
+          function updateLiveDirectionsList(route) {
+            navStepList.innerHTML = '';
+            (route.Directions || []).forEach(function (step, i) {
+              const li = document.createElement('li');
+              li.id = 'nav-live-step-' + i;
+              li.style.padding = '6px 0';
+              li.textContent = step.Instruction + ' · ' + Number(step.DistanceKm || 0).toFixed(2) + ' km · ' + Number(step.DurationMinutes || 0).toFixed(1) + ' min';
+              navStepList.appendChild(li);
+            });
+            navDirectionsDetails.hidden = !(route.Directions && route.Directions.length);
+          }
+          function updateVisibleRouteDirections(route) {
+            const list = document.querySelector('.visual-direction-list[data-route-rank="' + String(route.RouteRank) + '"]');
+            if (!list) return;
+            list.innerHTML = '';
+            (route.Directions || []).forEach(function (step) {
+              const li = document.createElement('li');
+              li.style.paddingLeft = '3px';
+              const instruction = document.createElement('div');
+              instruction.className = 'route-step-instruction';
+              instruction.style.fontWeight = '600';
+              instruction.textContent = step.Instruction || 'Continue';
+              const meta = document.createElement('div');
+              meta.className = 'small-help';
+              meta.textContent = Number(step.DistanceKm || 0).toFixed(2) + ' km · ' + Number(step.DurationMinutes || 0).toFixed(1) + ' min' + (step.RoadName ? ' · ' + step.RoadName : '');
+              li.appendChild(instruction);
+              li.appendChild(meta);
+              if (step.Lat != null && step.Lon != null && Number.isFinite(Number(step.Lat)) && Number.isFinite(Number(step.Lon))) {
+                const button = document.createElement('button');
+                button.type = 'button';
+                button.className = 'route-step-jump';
+                button.dataset.stepNumber = step.StepNumber;
+                button.dataset.lat = step.Lat;
+                button.dataset.lon = step.Lon;
+                button.dataset.routeRank = route.RouteRank;
+                button.style.cssText = 'margin-top:5px;border:1px solid #cbd5e1;background:#fff;border-radius:7px;padding:4px 8px;color:#1d4ed8;cursor:pointer;font-size:.78rem;font-weight:700';
+                button.textContent = '⌖ Show this step on map';
+                li.appendChild(button);
+              }
+              list.appendChild(li);
+            });
+          }
+          function updateNextTurn(position) {
+            if (!navigationActive || !recommended || !routeMetrics) return;
+            const currentProgress = position.progressM;
+            navPositionProgress = currentProgress;
+            const remainingM = Math.max(0, routeMetrics.totalMeters - currentProgress);
+            const baseDurationSeconds = Number(recommended._durationSeconds || recommended.durationSeconds || 0);
+            const remainingSeconds = baseDurationSeconds > 0 ? Math.max(0, (remainingM / Math.max(1, routeMetrics.totalMeters)) * baseDurationSeconds) : null;
+            let next = null;
+            let nextIndex = -1;
+            for (let i = 0; i < recommended.Directions.length; i++) {
+              const step = recommended.Directions[i];
+              if (String(step.ManeuverType).toLowerCase() === 'depart') continue;
+              if (step._progressM > currentProgress + 25) { next = step; nextIndex = i; break; }
+            }
+            nextTurnPanel.hidden = false;
+            if (!next) {
+              navTurnSymbol.textContent = '✓';
+              navDistance.textContent = 'DESTINATION AHEAD';
+              navInstruction.textContent = 'Continue to your destination';
+            } else {
+              const metersToStep = Math.max(0, next._progressM - currentProgress);
+              navTurnSymbol.textContent = arrowForLiveStep(next);
+              navDistance.textContent = 'IN ' + formatMeters(metersToStep).toUpperCase();
+              navInstruction.textContent = next.Instruction;
+              navStepList.querySelectorAll('li').forEach(function (li) { li.style.background = ''; li.style.fontWeight = ''; });
+              const activeRow = document.getElementById('nav-live-step-' + nextIndex);
+              if (activeRow) { activeRow.style.background = '#dbeafe'; activeRow.style.fontWeight = '700'; activeRow.style.borderRadius = '6px'; activeRow.style.paddingLeft = '7px'; }
+              const stepKey = String(next.StepNumber) + '|' + String(next.Instruction);
+              if (metersToStep <= 250 && !spokenSteps.has(stepKey)) {
+                spokenSteps.add(stepKey);
+                speakNavigation((metersToStep > 35 ? 'In ' + Math.round(metersToStep) + ' metres, ' : '') + next.Instruction);
+              }
+            }
+            navRemaining.textContent = formatMeters(remainingM) + ' remaining' + (remainingSeconds != null ? ' · about ' + Math.max(1, Math.round(remainingSeconds / 60)) + ' minutes left' : '') + ' · GPS distance to route ' + Math.round(position.distanceM) + ' m';
+            if (remainingM < 40 || haversineMeters(latestGps.lat, latestGps.lon, points.destination.lat, points.destination.lon) < 45) {
+              setNavigationStatus('You appear to have arrived. Verify your surroundings and stop navigation.', 'Arrived');
+              speakNavigation('You have arrived at your destination.');
+              stopNavigation(false, true);
+            }
+          }
+          function speakNavigation(text) {
+            if (!voiceToggle || !voiceToggle.checked || !('speechSynthesis' in window) || !navigationActive) return;
+            try {
+              window.speechSynthesis.cancel();
+              const utterance = new SpeechSynthesisUtterance(text);
+              utterance.lang = 'en-IN';
+              utterance.rate = 0.95;
+              window.speechSynthesis.speak(utterance);
+            } catch (_) { /* Voice is optional; visual instructions remain available. */ }
+          }
+          function startNavigation() {
+            if (!navigator.geolocation) {
+              setNavigationStatus('This browser does not support location. The planned route is still available.', 'Unavailable');
+              return;
+            }
+            navigationActive = true;
+            rerouteInProgress = false;
+            offRouteFixCount = 0;
+            spokenSteps = new Set();
+            routeMetrics = buildRouteMetrics(recommended && recommended.geometry);
+            if (recommended) {
+              recommended._durationSeconds = Number(recommended.durationSeconds || (Number(recommended.EstimatedTime || 0) * 3600));
+            }
+            if (!routeMetrics) {
+              navigationActive = false;
+              setNavigationStatus('A full route geometry is required for navigation. Re-run the route search while online.', 'Unavailable');
+              return;
+            }
+            prepareDirectionsForNavigation(recommended);
+            updateLiveDirectionsList(recommended);
+            startNavButton.disabled = true;
+            stopNavButton.disabled = false;
+            setNavigationStatus('Requesting device location… allow the browser permission prompt. Keep this page open during the trip.', 'Waiting for GPS');
+            geolocationWatchId = navigator.geolocation.watchPosition(function (position) {
+              const lat = position.coords.latitude;
+              const lon = position.coords.longitude;
+              const accuracy = Number(position.coords.accuracy || 9999);
+              latestGps = {lat:lat, lon:lon, accuracy:accuracy};
+              const latlng = [lat, lon];
+              if (!liveUserMarker) {
+                liveUserMarker = L.marker(latlng, {icon:L.divIcon({className:'tdb-live-position', html:'<div style="width:20px;height:20px;background:#2563eb;border:4px solid white;border-radius:50%;box-shadow:0 0 0 3px #2563eb66,0 2px 8px #0f172a55"></div>', iconSize:[20,20], iconAnchor:[10,10]})}).addTo(map).bindPopup('Your current location');
+                liveAccuracyCircle = L.circle(latlng, {radius:Math.min(accuracy,500), color:'#2563eb', weight:1, opacity:.55, fillColor:'#60a5fa', fillOpacity:.12}).addTo(map);
+                map.setView(latlng, 16);
+              } else {
+                liveUserMarker.setLatLng(latlng);
+                if (liveAccuracyCircle) liveAccuracyCircle.setLatLng(latlng).setRadius(Math.min(accuracy,500));
+              }
+              if (accuracy > 100) {
+                setNavigationStatus('GPS accuracy is currently about ' + Math.round(accuracy) + ' m. Waiting for a more reliable fix before judging the route.', 'Weak GPS');
+                map.panTo(latlng, {animate:true});
+                return;
+              }
+              if (!routeMetrics) return;
+              const near = nearestPointOnRoute(lat, lon, routeMetrics);
+              updateNextTurn(near);
+              if (!navigationActive) return;
+              map.panTo(latlng, {animate:true});
+              if (near.distanceM > 100) offRouteFixCount += 1; else offRouteFixCount = 0;
+              const enoughTimePassed = Date.now() - lastRerouteAt > 20000;
+              if (offRouteFixCount >= 3 && enoughTimePassed && !rerouteInProgress) {
+                requestReroute(lat, lon, near.distanceM);
+              } else if (offRouteFixCount > 0) {
+                setNavigationStatus('You appear about ' + Math.round(near.distanceM) + ' m from the planned path. Checking another GPS fix before rerouting.', 'Checking route');
+              } else if (!rerouteInProgress) {
+                setNavigationStatus('Navigation active · GPS accuracy ±' + Math.round(accuracy) + ' m · following the blue path.', 'Navigating');
+              }
+            }, function (error) {
+              const messages = {1:'Location permission was denied. Allow location access for this localhost site in your browser settings.',2:'Your device could not determine a location. Try moving near a window or checking location services.',3:'Location request timed out. Keep navigation open and try Start again.'};
+              setNavigationStatus(messages[error.code] || 'Location could not be read.', 'GPS error');
+              stopNavigation(false);
+            }, {enableHighAccuracy:true, maximumAge:2000, timeout:15000});
+          }
+          async function requestReroute(lat, lon, offRouteDistance) {
+            if (rerouteInProgress || !navigationActive) return;
+            rerouteInProgress = true;
+            lastRerouteAt = Date.now();
+            offRouteFixCount = 0;
+            setNavigationStatus('You are off route (' + Math.round(offRouteDistance) + ' m away). Calculating a new path to ' + points.destination.name + '…', 'Rerouting');
+            const coords = lon + ',' + lat + ';' + points.destination.lon + ',' + points.destination.lat;
+            const url = 'https://router.project-osrm.org/route/v1/driving/' + coords + '?overview=full&geometries=geojson&steps=true&alternatives=false';
+            try {
+              const response = await fetch(url, {headers:{'Accept':'application/json'}});
+              if (!response.ok) throw new Error('Routing service HTTP ' + response.status);
+              const payload = await response.json();
+              if (payload.code !== 'Ok' || !payload.routes || !payload.routes.length) throw new Error('No new driving route was returned');
+              const raw = payload.routes[0];
+              const newDirections = [];
+              (raw.legs || []).forEach(function (leg) {
+                (leg.steps || []).forEach(function (step) {
+                  const item = formatJsInstruction(step);
+                  item.StepNumber = newDirections.length + 1;
+                  newDirections.push(item);
+                });
+              });
+              if (!raw.geometry || !raw.geometry.coordinates || raw.geometry.coordinates.length < 2) throw new Error('The new route did not include map geometry');
+              recommended.geometry = raw.geometry;
+              recommended.Directions = newDirections;
+              recommended._durationSeconds = Number(raw.duration || 0);
+              recommended.TotalDistance = Number(raw.distance || 0) / 1000;
+              recommended.EstimatedTime = Number(raw.duration || 0) / 3600;
+              routeMetrics = buildRouteMetrics(recommended.geometry);
+              prepareDirectionsForNavigation(recommended);
+              spokenSteps = new Set();
+              updateLiveDirectionsList(recommended);
+              updateVisibleRouteDirections(recommended);
+              const recommendedRank = String(recommended.RouteRank);
+              Object.keys(routeLayers).forEach(function (rank) {
+                if (rank !== recommendedRank) { map.removeLayer(routeLayers[rank]); delete routeLayers[rank]; }
+              });
+              const routeLayer = routeLayers[recommendedRank];
+              if (routeLayer) {
+                routeLayer.clearLayers();
+                routeLayer.addData({type:'Feature', properties:{}, geometry:raw.geometry});
+                routeLayer.setStyle({color:'#2563eb',weight:6,opacity:.98});
+                routeLayer.bringToFront();
+              } else {
+                routeLayers[recommendedRank] = L.geoJSON({type:'Feature', properties:{}, geometry:raw.geometry}, {style:{color:'#2563eb',weight:6,opacity:.98}}).addTo(map);
+              }
+              maneuverLayer.clearLayers();
+              renderManeuvers(recommended);
+              if (focusedStepMarker) { map.removeLayer(focusedStepMarker); focusedStepMarker = null; }
+              points.source.lat = lat;
+              points.source.lon = lon;
+              points.source.name = 'Your current location';
+              sourceMarker.setLatLng([lat, lon]).bindPopup('Current location — automatic reroute start');
+              const sourceNameEl = document.getElementById('route-source-name');
+              if (sourceNameEl) sourceNameEl.textContent = 'Your current location';
+              const recommendationEl = document.getElementById('route-recommendation-message');
+              if (recommendationEl) recommendationEl.textContent = 'The route was automatically recalculated from your current GPS position to ' + points.destination.name + '. Distance, base ETA and fuel estimate are updated.';
+              const rerouteWarning = document.getElementById('reroute-data-warning');
+              if (rerouteWarning) rerouteWarning.hidden = false;
+              const distanceEl = document.getElementById('route-total-distance');
+              const etaEl = document.getElementById('route-base-eta');
+              const fuelEl = document.getElementById('route-fuel-cost');
+              if (distanceEl) distanceEl.innerHTML = recommended.TotalDistance.toFixed(2) + ' <small>km</small>';
+              if (etaEl) etaEl.innerHTML = recommended.EstimatedTime.toFixed(2) + ' <small>hr</small>';
+              if (fuelEl) fuelEl.textContent = '₹' + (recommended.TotalDistance / Math.max(.1, navigationMileage) * navigationFuelPrice).toFixed(2);
+              map.fitBounds(routeLayer.getBounds().pad(.1));
+              map.panTo([lat, lon]);
+              setNavigationStatus('Route recalculated from your current position. New distance ' + recommended.TotalDistance.toFixed(1) + ' km, base ETA ' + recommended.EstimatedTime.toFixed(2) + ' hr. Live traffic and the route score are not resampled during this automatic reroute.', 'Route updated');
+              speakNavigation('Route updated. ' + (newDirections[1] ? newDirections[1].Instruction : 'Continue to your destination'));
+            } catch (err) {
+              setNavigationStatus('Automatic reroute failed: ' + (err && err.message ? err.message : 'routing service unavailable') + '. Keep following the last valid path only if safe, or stop and search the route again.', 'Reroute failed');
+            } finally {
+              rerouteInProgress = false;
+            }
+          }
+          function stopNavigation(announce, keepSpeech) {
+            navigationActive = false;
+            if (geolocationWatchId !== null && navigator.geolocation) navigator.geolocation.clearWatch(geolocationWatchId);
+            geolocationWatchId = null;
+            startNavButton.disabled = false;
+            stopNavButton.disabled = true;
+            if (!keepSpeech && 'speechSynthesis' in window) window.speechSynthesis.cancel();
+            if (announce !== false) setNavigationStatus('Navigation stopped. Your location is no longer being tracked by this page.', 'Stopped');
+            else if (navBadge.textContent !== 'Arrived') navBadge.textContent = 'Stopped';
+          }
+          if (startNavButton) startNavButton.addEventListener('click', startNavigation);
+          if (stopNavButton) stopNavButton.addEventListener('click', function () { stopNavigation(true); });
+          window.addEventListener('beforeunload', function () {
+            if (geolocationWatchId !== null && navigator.geolocation) navigator.geolocation.clearWatch(geolocationWatchId);
+            if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+          });
+
+
+          map.fitBounds(bounds.pad(0.12));
+          setTimeout(function () { map.invalidateSize(); }, 100);
+        })();
+      </script>
+      {% endif %}
+
+      <style>
+        .route-service-categories { display:grid; gap:9px; }
+        .route-service-category { border:1px solid #dbe5ee; border-radius:12px; background:#fff; overflow:hidden; }
+        .route-service-category > summary { display:flex; align-items:center; justify-content:space-between; gap:10px; list-style:none; cursor:pointer; padding:13px 14px; background:#f8fafc; font-weight:800; color:#1e293b; }
+        .route-service-category > summary::-webkit-details-marker { display:none; }
+        .route-service-category > summary::before { content:'＋'; color:#2563eb; margin-right:2px; }
+        .route-service-category[open] > summary::before { content:'−'; }
+        .route-service-category-count { font-size:.78rem; font-weight:700; color:#64748b; white-space:nowrap; }
+        .route-service-category-list { display:grid; gap:8px; padding:10px; }
+        .route-service-row { border:1px solid #d1fae5; border-radius:12px; padding:11px 12px; background:#f0fdf4; transition:border-color .15s,background .15s,box-shadow .15s; }
+        .route-service-row.is-selected { border:2px solid #2563eb; background:#eff6ff; box-shadow:0 0 0 3px #93c5fd66; }
+        .route-service-link { display:inline-block; color:#1d4ed8; font-weight:800; text-align:left; text-decoration:underline; text-underline-offset:3px; cursor:pointer; border:0; background:transparent; padding:0; font:inherit; }
+        .route-service-link:hover { color:#1e40af; }
+      </style>
+      <section id="route-services-section" style="margin-top:20px">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+          <h2 style="font-size:1.1rem;margin:0">Named services near the recommended route</h2>
+          <span class="route-id">{{ route_service_total_count }} match(es)</span>
+        </div>
+        {% if service_error %}<div class="alert error"><p>{{ service_error }}</p></div>{% endif %}
+        {% if route_service_matches %}
+          <p class="small-help" style="margin:0 0 10px">Service names are grouped into collapsible categories. Open a category, then click a name to return to the map, zoom directly to the exact location and highlight its marker.</p>
+          <div class="route-service-categories">
+          {% for label, grouped_services in route_service_matches|groupby('Label') %}
+            <details class="route-service-category">
+              <summary>
+                <span>{{ label }}</span>
+                <span class="route-service-category-count">{{ grouped_services|length }} location(s)</span>
+              </summary>
+              <div class="route-service-category-list">
+              {% for service in grouped_services|sort(attribute='DistanceKm') %}
+                <article id="route-service-row-{{ service.ServiceLocationID }}" class="route-service-row">
+                  <div style="display:flex;justify-content:space-between;gap:12px;align-items:start">
+                    <div style="min-width:0;flex:1">
+                      <span class="route-service-map-code" style="display:inline-flex;align-items:center;justify-content:center;min-width:31px;height:24px;padding:0 5px;margin-right:5px;border-radius:12px;background:#dcfce7;border:2px solid #15803d;color:#166534;font-size:.72rem;font-weight:900;vertical-align:middle">{{ service.MapCode }}</span>
+                      <a href="#route-map" class="route-service-jump route-service-link"
+                         data-service-id="{{ service.ServiceLocationID }}"
+                         data-lat="{{ service.Latitude }}" data-lon="{{ service.Longitude }}">
+                        {{ service.Name or 'Unnamed service' }}
+                      </a>
+                      <div style="font-size:.85rem;color:#64748b;margin-top:5px">{% if service.Brand %}{{ service.Brand }}{% endif %}{% if service.Operator %}{% if service.Brand %} · {% endif %}{{ service.Operator }}{% endif %}</div>
+                      {% if service.Address %}<div style="font-size:.85rem;margin-top:4px">{{ service.Address }}</div>{% endif %}
+                    </div>
+                    <span class="route-id" style="white-space:nowrap">{{ service.DistanceKm|number(2) }} km from route</span>
+                  </div>
+                </article>
+              {% endfor %}
+              </div>
+            </details>
+          {% endfor %}
+          </div>
+          {% if route_service_total_count > route_service_matches|length %}
+            <p class="small-help" style="margin-top:8px">Showing the {{ route_service_matches|length }} closest matches of {{ route_service_total_count }} services within the chosen route corridor. Widening the corridor may return more results.</p>
+          {% endif %}
+          <p class="small-help" style="margin-top:8px">Category-coded markers correspond to these listed locations: H = hospital, EV = EV charging station, R = restaurant, P = petrol pump and HT = hotel. The distance shown is a straight-line estimate from each service to the route geometry, not a driving detour.</p>
+        {% elif not service_error %}
+          {% if selected_service_types %}
+          <p class="small-help">No selected service categories had a matching location within {{ service_radius_value }} km of the recommended road path. Try a wider corridor or fewer selected categories.</p>
+          {% else %}
+          <p class="small-help">No service categories selected. The recommendation uses your time/fuel/distance priority and available traffic information only.</p>
+          {% endif %}
+        {% endif %}
+      </section>
+    {% else %}
+      <div class="empty-state"><div class="empty-illustration">⌁</div><h2>Your route recommendation will appear here</h2><p>Search a source and destination to compare path options, see the recommended full route, follow turn-by-turn instructions, view traffic samples and inspect nearby services.</p></div>
+    {% endif %}
+    <div class="info-strip"><strong>How the estimate works</strong><p>Fuel cost = distance ÷ your mileage × fuel price. OSRM supplies candidate road paths, geometry and turn instructions. The rule-based route scorer combines your time/fuel priority, available traffic and (when selected) equal-weight proximity to each chosen service category. It compares only returned candidate paths; it does not guarantee a globally optimal route or a guaranteed stop at every service. Traffic sampling is sparse and the adjusted ETA is approximate. Service distance is a straight-line estimate to the route geometry, not a driving detour. Available places are the named records loaded in CITY, not a complete nationwide city catalogue.</p></div>
+  </section>
+</div>
+{% endblock %}

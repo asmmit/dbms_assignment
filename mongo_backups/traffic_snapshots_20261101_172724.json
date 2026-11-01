@@ -1,0 +1,52 @@
+[
+  {
+    "_id": "6ae72841428efa1211d81b6a",
+    "segmentOsmId": 247177822,
+    "roadName": "NH 48",
+    "roadType": "primary",
+    "currentSpeed": 52.0,
+    "freeFlowSpeed": 65.0,
+    "congestion": 20.0,
+    "timestamp": "2026-11-01T17:23:37.661000"
+  },
+  {
+    "_id": "6ae728fbb81f458a134bb142",
+    "segmentOsmId": 1001,
+    "roadName": "",
+    "roadType": "primary",
+    "currentSpeed": 45.0,
+    "freeFlowSpeed": 60.0,
+    "congestion": 25.0,
+    "timestamp": "2026-11-01T17:26:43.481000"
+  },
+  {
+    "_id": "6ae728fbb81f458a134bb143",
+    "segmentOsmId": 1001,
+    "roadName": "",
+    "roadType": "secondary",
+    "currentSpeed": 35.0,
+    "freeFlowSpeed": 50.0,
+    "congestion": 30.0,
+    "timestamp": "2026-11-01T17:26:43.512000"
+  },
+  {
+    "_id": "6ae728fbb81f458a134bb144",
+    "segmentOsmId": 1001,
+    "roadName": "",
+    "roadType": "motorway",
+    "currentSpeed": 80.0,
+    "freeFlowSpeed": 100.0,
+    "congestion": 20.0,
+    "timestamp": "2026-11-01T17:26:43.545000"
+  },
+  {
+    "_id": "6ae728fbb81f458a134bb145",
+    "segmentOsmId": 1001,
+    "roadName": "",
+    "roadType": "trunk",
+    "currentSpeed": 50.0,
+    "freeFlowSpeed": 70.0,
+    "congestion": 28.57,
+    "timestamp": "2026-11-01T17:26:43.579000"
+  }
+]

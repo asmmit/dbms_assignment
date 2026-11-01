@@ -1,0 +1,37 @@
+[
+  {
+    "_id": "6ae728fab81f458a134bb141",
+    "userId": 1,
+    "vehicleId": null,
+    "routeId": 1,
+    "sourceCity": "Chennai",
+    "destinationCity": "Vellore",
+    "stops": [
+      {
+        "name": "Stop 1",
+        "category": "restaurant",
+        "location": {
+          "type": "Point",
+          "coordinates": [
+            79.5,
+            12.8
+          ]
+        },
+        "arrivalEstimate": null,
+        "addedAt": "2026-11-01T17:26:42.791000"
+      }
+    ],
+    "totals": {
+      "totalDistanceKm": 137.5,
+      "estimatedTimeHours": 0.0,
+      "fuelCostInr": 0.0
+    },
+    "travelScore": null,
+    "status": "planned",
+    "notes": "",
+    "startTime": "2026-11-01T17:26:42.748000",
+    "endTime": null,
+    "createdAt": "2026-11-01T17:26:42.748000",
+    "updatedAt": "2026-11-01T17:26:42.791000"
+  }
+]

@@ -1,0 +1,5 @@
+{% extends 'base.html' %}
+{% block title %}Application Error | TravelDB{% endblock %}
+{% block content %}
+<div class="alert error"><h1>Something went wrong</h1><p>{{ message }}</p><p>Check the MySQL service, database name, credentials in <code>.env</code>, and whether <code>setup.sql</code> has been executed.</p><a class="btn secondary" href="{{ url_for('index') }}">Return to dashboard</a></div>
+{% endblock %}

@@ -1,0 +1,18 @@
+{
+  "timestamp": "20261101_172724",
+  "database": "TravelDB_Documents",
+  "collections": {
+    "service_places": {
+      "count": 24649,
+      "file": "mongo_backups\\service_places_20261101_172724.json"
+    },
+    "trips": {
+      "count": 1,
+      "file": "mongo_backups\\trips_20261101_172724.json"
+    },
+    "traffic_snapshots": {
+      "count": 5,
+      "file": "mongo_backups\\traffic_snapshots_20261101_172724.json"
+    }
+  }
+}
