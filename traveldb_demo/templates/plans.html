@@ -1,0 +1,23 @@
+{% extends 'base.html' %}
+{% block title %}Saved Trip Plans | TravelDB{% endblock %}
+{% block content %}
+<div class="page-heading"><div class="eyebrow">DATABASE CRUD DEMONSTRATION</div><h1>Saved trip plans</h1><p>Create, view, edit and delete trip-plan records stored in the MySQL table <code>SAVED_TRIP_PLAN</code>.</p></div>
+<div class="two-column plans-layout">
+  <section class="panel">
+    <div class="panel-heading"><div><h2>Create a plan</h2><p>New data is inserted into MySQL on save.</p></div><span class="panel-icon">＋</span></div>
+    <form method="post" class="form-grid">
+      <label class="full">Plan name<input type="text" name="plan_name" maxlength="120" placeholder="e.g. Chennai to Bengaluru trip" required></label>
+      <label class="full">Source city<select name="source_city" required><option value="">Select source</option>{% for city in cities %}<option value="{{ city.CityID }}">{{ city.CityName }} · {{ city.StateName }}</option>{% endfor %}</select></label>
+      <label class="full">Destination city<select name="destination_city" required><option value="">Select destination</option>{% for city in cities %}<option value="{{ city.CityID }}">{{ city.CityName }} · {{ city.StateName }}</option>{% endfor %}</select></label>
+      <label class="full">Travel mode<select name="travel_mode">{% for mode in travel_modes %}<option>{{ mode }}</option>{% endfor %}</select></label>
+      <label class="full">Notes<textarea name="notes" maxlength="500" rows="3" placeholder="Optional preferences or reminders"></textarea></label>
+      <div class="full"><button class="btn primary" type="submit">Save plan to database</button></div>
+    </form>
+  </section>
+  <section class="panel plans-list-panel">
+    <div class="panel-heading"><div><h2>Stored plans</h2><p>Rows are read directly from MySQL.</p></div><span class="count-badge">{{ plans|length }}</span></div>
+    {% if plans %}<div class="plan-list">{% for plan in plans %}<article class="plan-row"><div class="plan-row-main"><div class="plan-icon">⇄</div><div><h3>{{ plan.PlanName }}</h3><p>{{ plan.SourceCity }} <span>→</span> {{ plan.DestinationCity }}</p><div class="plan-subline">{{ plan.TravelMode }}{% if plan.CreatedAt %} · {{ plan.CreatedAt }}{% endif %}</div>{% if plan.Notes %}<div class="plan-notes">{{ plan.Notes }}</div>{% endif %}</div></div><div class="row-actions"><a class="btn small secondary" href="{{ url_for('edit_plan', plan_id=plan.PlanID) }}">Edit</a><form method="post" action="{{ url_for('delete_plan', plan_id=plan.PlanID) }}" onsubmit="return confirm('Delete this saved plan?');"><button class="btn small danger" type="submit">Delete</button></form></div></article>{% endfor %}</div>{% else %}<div class="empty-state compact"><h2>No saved plans yet</h2><p>Create one using the form. It will appear here after MySQL commits the insert.</p></div>{% endif %}
+  </section>
+</div>
+<div class="note"><strong>CRUD shown here:</strong> Create = form submit; Read = stored list; Update = Edit; Delete = Delete button. Verify a record in MySQL using <code>SELECT * FROM SAVED_TRIP_PLAN;</code>.</div>
+{% endblock %}

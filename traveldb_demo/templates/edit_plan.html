@@ -1,0 +1,15 @@
+{% extends 'base.html' %}
+{% block title %}Edit Plan | TravelDB{% endblock %}
+{% block content %}
+<div class="page-heading"><div class="eyebrow">UPDATE DATABASE RECORD</div><h1>Edit trip plan</h1><p>Changes are written to MySQL after you save.</p></div>
+<section class="panel edit-panel">
+  <form method="post" class="form-grid">
+    <label class="full">Plan name<input type="text" name="plan_name" maxlength="120" value="{{ plan.PlanName }}" required></label>
+    <label class="full">Source city<select name="source_city" required>{% for city in cities %}<option value="{{ city.CityID }}" {% if plan.SourceCityID == city.CityID %}selected{% endif %}>{{ city.CityName }} · {{ city.StateName }}</option>{% endfor %}</select></label>
+    <label class="full">Destination city<select name="destination_city" required>{% for city in cities %}<option value="{{ city.CityID }}" {% if plan.DestinationCityID == city.CityID %}selected{% endif %}>{{ city.CityName }} · {{ city.StateName }}</option>{% endfor %}</select></label>
+    <label class="full">Travel mode<select name="travel_mode">{% for mode in travel_modes %}<option {% if plan.TravelMode == mode %}selected{% endif %}>{{ mode }}</option>{% endfor %}</select></label>
+    <label class="full">Notes<textarea name="notes" maxlength="500" rows="4">{{ plan.Notes or '' }}</textarea></label>
+    <div class="full form-actions"><button class="btn primary" type="submit">Save changes</button><a class="btn secondary" href="{{ url_for('plans') }}">Cancel</a></div>
+  </form>
+</section>
+{% endblock %}
